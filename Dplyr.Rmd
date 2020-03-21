@@ -1,0 +1,223 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Dplyr Library Basics
+
+**Reading Data**
+
+```{r, warning=FALSE}
+library(dplyr)
+library(hflights)
+
+head(hflights)
+
+````
+
+**converting to local variable**
+
+```{r, warning=FALSE}
+flight_data <- tbl_df(hflights)
+flight_data
+```
+
+**specific rows**
+```{r, warning=FALSE}
+print(flight_data, n = 20)
+
+```
+
+**convert to normal dataframe to see all columns beacuse "head(flight_data)" only shows few columns**
+
+```{r}
+data.frame(head(flight_data))
+```
+
+## 1. Flitering Data
+
+**base R appraoch to view all flights on January 1**
+```{r}
+flight_data[flight_data$Month == 1 & flight_data$DayofMonth == 1, ]
+```
+
+**dplyr appraoch**
+```{r}
+filter(flight_data, Month == 1, DayofMonth == 1)
+filter(flight_data, Month == 1 | Month == 2, DayofMonth == 1 | DayofMonth == 2)
+```
+
+## 2. Column Selection
+
+**base R apprach for columns Selection**
+
+```{r}
+flight_data[, c("FlightNum", "AirTime", "ArrTime")]
+```
+
+**Dplyr approach**
+
+```{r}
+select(flight_data, ArrTime, FlightNum, AirTime)
+```
+
+**data from year-day of month and all the data containing 'taxi' and 'delay'**
+
+```{r}
+select(flight_data,Year:DayofMonth, contains("Taxi"), contains("Delay") )
+```
+
+**start_with, ends_with and matches(for regualar expressions) can also be used to extract columns by names "Chaining" or "Pipelining".Usual way to perform multiple operations in one line is by nesting Can write commands in a natural order by using the `%>%` infix operator (which can be pronounced as "then"**
+
+**Nested method to select UniqueCarrier and DepDelay columns and filter for delays over 60 minutes**
+```{r}
+filter(select(flight_data, UniqueCarrier, DepDelay), DepDelay > 60)
+```
+
+**chaining method**
+
+```{r}
+flight_data %>%
+  select(UniqueCarrier, DepDelay) %>%
+  filter(DepDelay > 60)
+```
+
+**Chaining increases readability significantly when there are many commands Operator is automatically imported from the [magrittr](https://github.com/smbache/magrittr) package Can be used to replace nesting in R commands outside of dplyr**
+
+**create two vectors and calculate Euclidian distance between them**
+
+```{r}
+x1 <- 1:5; x2 <- 2:6
+sqrt(sum((x1-x2)^2))
+```
+
+**chaining method**
+
+```{r}
+(x1 - x2)^2 %>% sum() %>% sqrt()
+```
+
+## 3. Arrange: Reorder rows
+
+**base R approach to select UniqueCarrier and DepDelay columns and sort by DepDelay**
+
+```{r}
+flight_data[order(flight_data$DepDelay), c("UniqueCarrier", "DepDelay")]
+```
+
+**dplyr approach (prints the new variable but does not store it)**
+
+```{r}
+
+flight_data %>%
+  select(AirTime, Distance) %>%                   
+  mutate(speed = Distance/AirTime*60)
+```
+
+**store the new variable**
+
+```{r}
+flight_data <- flight_data %>% mutate(Speed = Distance/AirTime*60)
+flight_data
+```
+
+## 4. Summarzie
+
+**summarise: Reduce variables to values Primarily useful with data that has been grouped by one or more variables group_by` creates the groups that will be operated on summarise` uses the provided aggregation function to summarise each group**
+
+**base R approaches to calculate the average arrival delay to each destination**
+
+```{r}
+head(with(flight_data, tapply(ArrDelay, Dest, mean, na.rm=TRUE)))
+head(aggregate(ArrDelay ~ Dest, flight_data, mean))
+```
+
+**dplyr approach: create a table grouped by Dest, and then summarise each group by taking the mean of ArrDelay**
+
+```{r}
+
+flight_data %>%
+  group_by(Dest) %>%
+  summarise(avg_delay = mean(ArrDelay, na.rm = TRUE))
+```
+
+**#summarise_each` allows you to apply the same summary function to multiple columns at once Note: `mutate_each` is also available**
+
+**for each carrier, calculate the percentage of flights cancelled or diverted**
+
+```{r}
+flight_data %>%
+  group_by(UniqueCarrier) %>%
+  summarise_each(funs(mean), Cancelled, Diverted)
+```
+
+**for each carrier, calculate the minimum and maximum arrival and departure delays**
+
+```{r, warning=FALSE}
+flight_data %>%
+  group_by(UniqueCarrier) %>%
+  summarise_each(funs(min(na.rm = TRUE), max(.,na.rm = TRUE)), matches("Delay"))
+```
+
+**Helper function `n()` counts the number of rows in a group Helper function `n_distinct(vector)` counts the number of unique items in that vector for each day of the year, count the total number of flights and sort in descending order**
+
+```{r}
+flight_data %>%
+  group_by(Month, DayofMonth) %>%
+  summarise(flight_count = n()) %>%
+  arrange(desc(flight_count))
+```
+
+
+**rewrite more simply with the `tally` function**
+
+```{r}
+flight_data %>%
+  group_by(Month, DayofMonth) %>%
+  tally(sort = TRUE)
+```
+
+**for each destination, count the total number of flights and the number of distinct planes that flew there**
+
+```{r}
+flight_data %>%
+  group_by(Dest) %>%
+  summarise(flight_total = n(), plane_count = n_distinct(TailNum))
+```
+
+**Grouping can sometimes be useful without summarising**
+
+**for each destination, show the number of cancelled and not cancelled flights**
+
+```{r}
+flight_data %>%
+  group_by(Dest) %>%
+  select(Cancelled) %>%
+  table() %>%
+  head()
+```
+
+
+**Aggregation function (like `mean`) takes n inputs and returns 1 value [Window function](http://cran.r-project.org/web/packages/dplyr/vignettes/window-functions.html) takes n inputs and returns n values Includes ranking and ordering functions (like `min_rank`), offset functions (`lead` and `lag`), and cumulative aggregates (like `cummean`). for each carrier, calculate which two days of the year they had their longest departure delays note: smallest (not largest) value is ranked as 1, so you have to use `desc` to rank by largest value**
+
+```{r}
+flight_data %>%
+  group_by(UniqueCarrier) %>%
+  select(Month, DayofMonth, DepDelay) %>%
+  top_n(3) %>%
+  arrange(UniqueCarrier, desc(DepDelay))
+```
+
+ **for each month, calculate the number of flights and the change from the previous *month**
+ 
+```{r}
+
+flight_data %>%
+  group_by(UniqueCarrier) %>%
+  select(Month, DayofMonth) %>%
+  summarise(flight_count = n()) %>%
+  mutate(change = flight_count - lag(flight_count))
+
+```
+ 
+**#dplyr can connect to a database as if the data was loaded into a data frame Use the same syntax for local data frames and databases Only generates SELECT statements Currently supports SQLite, PostgreSQL/Redshift, MySQL/MariaDB, BigQuery, MonetDB Example below is based upon an SQLite database containing the hflights data Instructions for creating this database are in the [databases vignette](http://cran.r-project.org/web/packages/dplyr/vignettes/databases.html)**
